@@ -2,15 +2,13 @@ library(tidyverse)
 library(here)
 library(ggplot2)
 library(lubridate)
-
-
+library(exifr) # for getting exif information from the cameras
 
 
 # get local sunrise/sunset time
 
 #######################################################################################################################
-# beginnings of a function to read exif information from the camera
-library(exifr)
+# read exif information from the camera
 files <- list.files(here::here("data_new","sites","testsite1"), recursive=TRUE, pattern="JPG", full.names=TRUE)
 exifinfo <- read_exif(files)
 
