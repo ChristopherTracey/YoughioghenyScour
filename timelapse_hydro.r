@@ -3,28 +3,71 @@ library(here)
 library(ggplot2)
 library(lubridate)
 library(exifr) # for getting exif information from the cameras
+library(suncalc)
+library(dataRetrieval)
+library(jpeg)
+library(grid)
 
+# options for a run
+sitename <- "dimple1"
+latitude <- 39.86417
+longitude <- -79.49722 
 
-# get local sunrise/sunset time
+# check to see if an output folder exists and if not create one.
+if (!dir.exists(here::here("data","sites",sitename,"output"))){
+  dir.create(here::here("data","sites",sitename,"output"))
+} else {
+  print("Output directory already exists!")
+}
 
 #######################################################################################################################
 # read exif information from the camera
-files <- list.files(here::here("data_new","sites","testsite1"), recursive=TRUE, pattern="JPG", full.names=TRUE)
-exifinfo <- read_exif(files)
+files <- list.files(here::here("data","sites",sitename), recursive=TRUE, pattern="JPG", full.names=TRUE)
+print(paste(length(files),"image files were found in the",sitename,"directory", sep=" "))
+exifinfo <- read_exif(files)  # read the exif data from the camera.
 
+# extract the image sizes for later use
 imageWidth <- unique(exifinfo$ImageWidth)
 imageHeight <- unique(exifinfo$ImageHeight)
 
 exifinfo <- exifinfo[c("FileName","Directory","FileSize","FileModifyDate","GPSLatitude","GPSLongitude")] # drop the unneeded fields
 
-# find the photos taken at 15minute intervals
+# properly format the date
 exifinfo$datetime <- ymd_hms(exifinfo$FileModifyDate) # convert to date format
 exifinfo$datetime <- with_tz(exifinfo$datetime, "America/New_York") # convert to eastern time
 
+#######################################################################################################################
+# filter by various factors
+
+# data range
+date_start <- min(exifinfo$datetime)
+date_end <- max(exifinfo$datetime)
+ 
+totalhours <- interval(date_start, date_end) %>% as.numeric('hours')
+estimatephotos <- ceiling(totalhours/4)
+  
+# get local sunrise/sunset time
+daylight <- getSunlightTimes(date=as.Date(exifinfo$datetime), lat=latitude, lon=longitude, keep=c("sunrise", "sunset"), tz="America/New_York")
+daylight <- unique(daylight) # get sunrise/sunset for each day
+daylight <- daylight[c("date","sunrise","sunset")]
+
+exifinfo$day <- date(exifinfo$datetime)
+
+exifinfo <- merge(exifinfo, daylight, by.x="day", by.y="date")
+
+exifinfo$daylight <-ifelse(exifinfo$datetime>=exifinfo$sunrise&exifinfo$datetime<=exifinfo$sunset, "yes", "no")
+
+table(exifinfo$daylight)
+
+# find the photos taken at 15minute intervals
 exifinfo$intervalshot <- NA
 exifinfo$intervalshot <- ifelse( minute(exifinfo$datetime) %in% c(0,15,30,45)   , "yes", "no")
 
-suitablePhotos <- exifinfo[which(exifinfo$intervalshot=="yes"),]
+table(exifinfo$intervalshot,exifinfo$daylight)
+
+suitablePhotos <- exifinfo[which(exifinfo$intervalshot=="yes"&exifinfo$daylight=="yes"),]
+
+
 
 # get the earliest dates
 
@@ -34,9 +77,16 @@ date_start <- date(datetime_start)
 date_end <- date(datetime_end)            
 
 
+
+
+
+
+
+
+
 ######################################################################################################################
 # function to get gage data
-library(dataRetrieval)
+
 siteNumber <- "03081500"
 #parameterCd <- "00060"  # Discharge
 parameterCd <- "00065" # gage height
@@ -52,65 +102,45 @@ dischargeUnit <- dischargeUnit[which(dischargeUnit$dateTime>=datetime_start&disc
 ##########
 # make graphs
 
-df <- merge(dischargeUnit, suitablePhotos, by.x="dateTime", by.y="datetime")
+df <- merge(dischargeUnit, suitablePhotos, by.x="dateTime", by.y="datetime") #, all.x=TRUE
+# NOTE, probably should add something about all.x=true to properly format the graphs
+
+# get the number of photos so we can properly pad the file names so things sort correctly...
+padlength <- nchar(nrow(df)) # used below in ggsave
+
+
+df <- df[order(df$dateTime),] 
 
 df_gagemin <- min(floor(df$GH_Inst))
 df_gagemax <- max(ceiling(df$GH_Inst))
 df_datemin <- min(df$dateTime)
 df_datemax <- max(df$dateTime)
 
-library(jpeg)
-library(grid)
+save.image(file = "my_work_space.RData")
+#load("my_work_space.RData")
+
+
 
 for(i in 1:nrow(df)){
   df1 <- df[1:i,]
-  img <- readJPEG(paste(df$Directory[i],df$FileName[i], sep="/")) # PNG(system.file("img", "Rlogo.png", package="png"), TRUE)
-  gpp <- rasterGrob(img, interpolate=TRUE)
-  gpp$width <- unit(1, "npc") 
-  gpp$height <- unit(1, "npc")
+  img <- readJPEG(paste(df$Directory[i],df$FileName[i], sep="/")) 
+  gpp <- rasterGrob(img, interpolate=TRUE) 
+  # gpp$width <- unit(1, "in") 
+  # gpp$height <- unit(1, "in")
   a <- ggplot(df1,aes(x=dateTime,y=GH_Inst)) + 
+    xlab("Date") +
+    ylab("Gage Height (feet)") +
     annotation_custom(gpp) +
-    geom_line(color='steelblue', size=3) + 
+    geom_line(color='red2', size=2) + 
     expand_limits(x=c(df_datemin,df_datemax),y=c(df_gagemin,df_gagemax)) +
-    theme(panel.ontop=TRUE, panel.background=element_rect(colour="black",fill="transparent"))
-  ggsave(filename = paste(df1$Directory[i],"output",paste0("photo",i,".jpg"),sep = "/"))
-  print("photo saved")
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+    #theme(panel.border=element_blank(), panel.grid.major=element_blank(), panel.grid.minor=element_blank(), axis.line=element_line(colour="black"))
+  ggsave(filename = paste(here::here("data","sites",sitename,"output"), paste0("photo", str_pad(i, padlength, pad="0"),".jpg"),sep = "/"))
+  print(paste("photo", i, "of", nrow(df), "saved"), sep=" ")
 }
-
 
 # make a movie
 library(av)
+outputfiles <- list.files(here::here("data", "sites", sitename, "output"), recursive=TRUE, pattern="jpg", full.names=TRUE)
+av_encode_video(outputfiles, output=here::here("data", "sites", sitename, "output", paste(sitename, "_20200601.mp4", sep="")), framerate=12)
 
-outputfiles <- list.files(here::here("data_new","sites","testsite1","output"), recursive=TRUE, pattern="jpg", full.names=TRUE)
-
-av_encode_video(outputfiles, output=here::here("data_new","sites","testsite1","output","output.mp4"), framerate=12)
-
-
-# img <- readJPEG(paste(df$Directory[i],df$FileName[i], sep="/")) # PNG(system.file("img", "Rlogo.png", package="png"), TRUE)
-# gpp <- rasterGrob(img, interpolate=TRUE)
-# gpp$width <- unit(1, "npc") 
-# gpp$height <- unit(1, "npc")
-# #df <- data.frame(x=seq(1,2,0.01),y=seq(1,2,0.01))
-# ggplot(df,aes(x=dateTime,y=GH_Inst)) + 
-#   annotation_custom(gpp) +
-#   geom_line() + 
-#   theme(panel.ontop=TRUE, panel.background=element_rect(colour="black",fill="transparent"))
-# 
-# 
-# 
-# 
-# 
-# 
-# plot(dischargeUnit$dateTime,dischargeUnit$GH_Inst)
-# 
-# ggplot(dischargeUnit)
-# 
-# p <- ggplot(dischargeUnit, aes(x=dateTime, y=GH_Inst)) +
-#   geom_line() +
-#   theme_minimal()
-# 
-# library(gganimate)
-# anim <- p + 
-#   transition_reveal(dateTime)
-# anim
-# 
