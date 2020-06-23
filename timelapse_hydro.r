@@ -9,7 +9,7 @@ library(jpeg)
 library(grid)
 
 # options for a run
-sitename <- "dimple1"
+sitename <- "ferncliff2"
 latitude <- 39.86417
 longitude <- -79.49722 
 
@@ -29,6 +29,19 @@ exifinfo <- read_exif(files)  # read the exif data from the camera.
 # extract the image sizes for later use
 imageWidth <- unique(exifinfo$ImageWidth)
 imageHeight <- unique(exifinfo$ImageHeight)
+
+if(length(imageHeight>1|imageWidth>1)){
+  print("There are two different size images. We'll resize them later in the process.")
+  resizeHeight <- min(imageHeight)
+  resizeWidth <- min(imageWidth)
+  exifinfo$flagResize <- ifelse(exifinfo$ImageWidth==resizeWidth&exifinfo$ImageHeight==resizeHeight,"no","yes")
+  table(exifinfo$flagResize)
+} else {
+  print("All images are the same size. Good to go!")
+}
+
+
+
 
 exifinfo <- exifinfo[c("FileName","Directory","FileSize","FileModifyDate","GPSLatitude","GPSLongitude")] # drop the unneeded fields
 
