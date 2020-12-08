@@ -43,7 +43,7 @@ if(length(imageHeight>1|imageWidth>1)){
 
 
 
-exifinfo <- exifinfo[c("FileName","Directory","FileSize","FileModifyDate","GPSLatitude","GPSLongitude")] # drop the unneeded fields
+exifinfo <- exifinfo[c("FileName","Directory","FileSize","FileModifyDate","GPSLatitude","GPSLongitude","flagResize")] # drop the unneeded fields
 
 # properly format the date
 exifinfo$datetime <- ymd_hms(exifinfo$FileModifyDate) # convert to date format
@@ -74,11 +74,13 @@ table(exifinfo$daylight)
 
 # find the photos taken at 15minute intervals
 exifinfo$intervalshot <- NA
-exifinfo$intervalshot <- ifelse( minute(exifinfo$datetime) %in% c(0,15,30,45)   , "yes", "no")
+exifinfo$intervalshot <- ifelse(minute(exifinfo$datetime) %in% c(0,15,30,45) & second(exifinfo$datetime)==0   , "yes", "no")
 
 table(exifinfo$intervalshot,exifinfo$daylight)
 
-suitablePhotos <- exifinfo[which(exifinfo$intervalshot=="yes"&exifinfo$daylight=="yes"),]
+exifinfo$dateround <- round_date(exifinfo$datetime, "15 minutes")
+
+suitablePhotos <- exifinfo[which(exifinfo$daylight=="yes"),] #exifinfo$intervalshot=="yes"&
 
 
 
@@ -93,9 +95,11 @@ date_end <- date(datetime_end)
 
 
 
+# set of all dates
+allinterval <- as.data.frame(seq(from=as.POSIXct(datetime_start, tz="America/New_York"), to=as.POSIXct(datetime_end, tz="America/New_York") , by='15 min')) #)
+names(allinterval) <- "refdate"
 
-
-
+a <- merge(allinterval, suitablePhotos, by.x="refdate", by.y="dateround", all.x=TRUE) #, all.x=TRUE
 
 ######################################################################################################################
 # function to get gage data
@@ -105,7 +109,7 @@ siteNumber <- "03081500"
 parameterCd <- "00065" # gage height
 startDate <- date_start 
 endDate <- date_end 
-dischargeUnit <- readNWISuv(siteNumber, parameterCd, startDate, endDate)
+dischargeUnit <- readNWISuv(siteNumber, parameterCd, startDate, endDate, tz="America/New_York")
 dischargeUnit <- renameNWISColumns(dischargeUnit)
 
 #subset discharge units by photo time period
