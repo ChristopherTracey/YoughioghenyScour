@@ -28,7 +28,7 @@ exifinfo <- read_exif(files)  # read the exif data from the camera.
 
 # make a backup 
 save.image(here::here("exifbackup.RData"))
-         
+exifinfoBackup <- exifinfo
 
 # extract the image sizes for later use
 imageWidth <- unique(exifinfo$ImageWidth)
@@ -84,7 +84,7 @@ table(exifinfo$intervalshot,exifinfo$daylight)
 
 exifinfo$dateround <- round_date(exifinfo$datetime, "15 minutes")
 
-suitablePhotos <- exifinfo[which(exifinfo$daylight=="yes"),] #exifinfo$intervalshot=="yes"&
+suitablePhotos <- exifinfo[which(exifinfo$intervalshot=="yes"&exifinfo$daylight=="yes"),] #
 
 
 
@@ -111,10 +111,9 @@ a <- merge(allinterval, suitablePhotos, by.x="refdate", by.y="dateround", all.x=
 siteNumber <- "03081500"
 #parameterCd <- "00060"  # Discharge
 parameterCd <- "00065" # gage height
-startDate <- date_start 
-endDate <- date_end 
-dischargeUnit <- readNWISuv(siteNumber, parameterCd, startDate, endDate, tz="America/New_York")
+dischargeUnit <- readNWISuv(siteNumber, parameterCd, startDate=date_start, endDate=date_end, tz="America/New_York")
 dischargeUnit <- renameNWISColumns(dischargeUnit)
+
 
 #subset discharge units by photo time period
 dischargeUnit <- dischargeUnit[which(dischargeUnit$dateTime>=datetime_start&dischargeUnit$dateTime<=datetime_end),]
@@ -154,7 +153,12 @@ for(i in 1:nrow(df)){
     annotation_custom(gpp) +
     geom_line(color='red2', size=2) + 
     expand_limits(x=c(df_datemin,df_datemax),y=c(df_gagemin,df_gagemax)) +
-    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+    theme(
+      panel.grid.major=element_blank(), 
+      panel.grid.minor=element_blank(), 
+      panel.background=element_blank(), 
+      axis.line=element_line(colour = "black")
+    ) +
     #theme(panel.border=element_blank(), panel.grid.major=element_blank(), panel.grid.minor=element_blank(), axis.line=element_line(colour="black"))
   ggsave(filename = paste(here::here("data","sites",sitename,"output"), paste0("photo", str_pad(i, padlength, pad="0"),".jpg"),sep = "/"))
   print(paste("photo", i, "of", nrow(df), "saved"), sep=" ")
