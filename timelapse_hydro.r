@@ -26,6 +26,10 @@ files <- list.files(here::here("data","sites",sitename), recursive=TRUE, pattern
 print(paste(length(files),"image files were found in the",sitename,"directory", sep=" "))
 exifinfo <- read_exif(files)  # read the exif data from the camera.
 
+# make a backup 
+save.image(here::here("exifbackup.RData"))
+         
+
 # extract the image sizes for later use
 imageWidth <- unique(exifinfo$ImageWidth)
 imageHeight <- unique(exifinfo$ImageHeight)
